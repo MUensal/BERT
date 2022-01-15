@@ -91,8 +91,6 @@ for row in X_test:
 # print(X_train_tokens)
 # print(X_test_tokens)
 
-print('\n############  tensors  #################\n')
-
 # save datafile into new csv file
 # df.to_csv('Bert_Data.csv', sep=';', encoding='ISO-8859-1', index=None)
 

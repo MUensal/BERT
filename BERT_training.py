@@ -2,7 +2,8 @@ import sys
 import time
 
 import torch as torch
-from sklearn.metrics import accuracy_score
+from sklearn import metrics
+from sklearn.metrics import accuracy_score, classification_report, confusion_matrix
 from sklearn.model_selection import train_test_split
 from transformers import BertTokenizer, BertConfig, BertForSequenceClassification
 import pandas as pd
@@ -12,9 +13,9 @@ from transformers import AdamW, get_linear_schedule_with_warmup
 from tqdm import tqdm
 import numpy as np
 
+
 print('Python version     : ' + str(sys.version))
 print('Torch version   : ' + str(torch.__version__))
-
 
 # instantiating from the pre-trained model gbert for German language
 config = BertConfig.from_pretrained("deepset/gbert-base", finetuning_task='binary', num_labels=2)
@@ -22,7 +23,7 @@ tokenizer = BertTokenizer.from_pretrained("deepset/gbert-base")
 model = BertForSequenceClassification.from_pretrained("deepset/gbert-base")
 
 # loading prepared data
-df = pd.read_csv(r'Prepared_data.csv', engine='python', sep='delimiter', encoding='ISO-8859-1',
+df = pd.read_csv(r'Prepared_data_shorter.csv', engine='python', sep='delimiter', encoding='ISO-8859-1',
                  delimiter=';', header=0)
 
 # lowercase tokens (do i need it?)
@@ -32,7 +33,6 @@ df['text'] = df['text'].str.lower()
 df.rename(columns={'hof_OR_none': 'labels'}, inplace=True)
 
 # print(df.head(5))
-
 
 # converting labels into numerical values, in order to save it into a tensor
 df['labels'] = df['labels'].replace(['HOF', 'NOT'], [1, 0])
@@ -50,6 +50,10 @@ X_train, X_test, Y_train, Y_test = train_test_split(df['text'],
                                                     random_state=42,
                                                     stratify=df['labels']
                                                     )
+
+# print(X_train[:10])
+# print(X_train.index)
+
 
 # TOKENIZATION
 
@@ -88,31 +92,43 @@ print(type(Y_train))
 # print(len(X_train_tokens[2]))
 
 # Create Tensors for training set, attention mask, and training labels
-input_ids_train = torch.LongTensor(X_train_tokens)
+training_data_x = torch.LongTensor(X_train_tokens)
 input_mask_train = torch.FloatTensor(att_mask_train)
-label_ids_train = torch.tensor(Y_train.values)
+training_labels_y = torch.tensor(Y_train.values)
 
 # Test Data Tensors
-ids_test_data = torch.LongTensor(X_test_tokens)
+test_data_x = torch.LongTensor(X_test_tokens)
 input_mask_test = torch.FloatTensor(att_mask_test)
-label_ids_test = torch.tensor(Y_test.values)
+test_labels_y = torch.tensor(Y_test.values)
+
+print("\n-------------INFORMATION--------------")
+print(np.shape(training_data_x))
+print(np.shape(training_labels_y))
+print(np.shape(test_data_x))
+print(np.shape(test_labels_y))
+print(type(training_data_x))
+print(test_labels_y[:3])
+print(training_labels_y[:3])
+print(len(test_labels_y))
+print(len(training_labels_y))
+print(type(X_train))
 
 
 # shapes of this tensors
 print('\n------------------------')
-print(input_ids_train.shape)
+print(training_data_x.shape)
 print(input_mask_train.shape)
-print(label_ids_train.shape)
+print(training_labels_y.shape)
 print('------------------------')
 
 # input example
-print('sample input tokens: ' + str(input_ids_train[1]))
-print('attention mask: ' + str(input_mask_train[1]))
-print('label: ' + str(label_ids_train[1]))
+print('sample input tokens: ' + str(training_data_x[2]))
+print('attention mask: ' + str(input_mask_train[2]))
+print('label: ' + str(training_labels_y[2]))
 
 # Concatenate tensors into one tensor
-training_data = TensorDataset(input_ids_train, input_mask_train, label_ids_train)
-test_data = TensorDataset(ids_test_data, input_mask_test, label_ids_test)
+training_data = TensorDataset(training_data_x, input_mask_train, training_labels_y)
+test_data = TensorDataset(test_data_x, input_mask_test, test_labels_y)
 
 # MODEL TRAINING
 print('-----------------------')
@@ -142,7 +158,7 @@ print(batch_size)
 print(t_total)
 
 # set learning parameters
-learning_rate = 1e-4
+learning_rate = 5e-5
 adam_epsilon = 1e-8
 warmup_steps = 0
 
@@ -158,6 +174,7 @@ scheduler = get_linear_schedule_with_warmup(optimizer,
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 model.to(device)
 
+
 # output is too long
 # print(model)
 
@@ -167,8 +184,7 @@ progress_bar = tqdm(range(t_total))
 # Put model in 'train'
 model.train()
 
-print("\nTraining Model...")
-print('--- Start Time ' + str(time.strftime('%c')))
+print("\nTraining Model.......Start Time " + str(time.strftime('%c')))
 
 # wrap epoch and batches in loops
 for epoch in range(num_train_epochs):
@@ -209,7 +225,7 @@ for epoch in range(num_train_epochs):
 print('--- End Time ' + str(time.strftime('%c')))
 
 # save model
-model.save_pretrained('BERT_model_1')
+# model.save_pretrained('BERT_model_1')
 
 # EVALUATE MODEL
 
@@ -229,7 +245,6 @@ test_dataloader = DataLoader(test_data,
 # Init for prediction and labels
 preds = None
 out_labels_ids = None
-
 
 # evaluation mode
 model.eval()
@@ -264,6 +279,37 @@ for batch in tqdm(test_dataloader, desc="Evaluating"):
 preds = np.argmax(preds, axis=1)
 acc_score = accuracy_score(preds, out_label_ids)
 print('\nAccuracy Score on Test data ', acc_score)
+
+print("accuracy andere methode: ")
+acc = metrics.accuracy_score(test_labels_y, preds)
+
+f1_score = metrics.f1_score(test_labels_y, preds)
+recall = metrics.recall_score(test_labels_y, preds)
+precision = metrics.precision_score(test_labels_y, preds)
+print(acc, f1_score, recall, precision)
+print('vs')
+print(classification_report(test_labels_y, preds))
+
+preds = np.argmax(preds)
+actual = np.where(test_labels_y >= 0.5, 1, 0)
+
+# True pos = (1,1), True neg = (0,0), False pos = (1,0), False neg = (0,1)
+TP = np.count_nonzero(preds * actual)
+TN = np.count_nonzero((preds - 1) * (actual - 1))
+FP = np.count_nonzero(preds * (actual - 1))
+FN = np.count_nonzero((preds - 1) * actual)
+
+print("True Positives", TP)
+print("True Negatives", TN)
+print("False Positives", FP)
+print("False Negatives", FN)
+
+
+
+
+
+
+
 
 
 
